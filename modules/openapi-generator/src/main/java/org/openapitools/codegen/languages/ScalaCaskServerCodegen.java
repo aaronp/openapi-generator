@@ -472,8 +472,8 @@ public class ScalaCaskServerCodegen extends AbstractScalaCodegen implements Code
          *
          * @return the CodegenParameters
          */
-        public List<CodegenParameter> getGroupQueryParams() {
-            List<CodegenParameter> list = operations.stream().flatMap(op -> op.queryParams.stream()).map(p -> {
+        public LinkedHashSet<CodegenParameter> getGroupQueryParams() {
+            LinkedHashSet<CodegenParameter> list = operations.stream().flatMap(op -> op.queryParams.stream()).map(p -> {
                         final CodegenParameter copy = p.copy();
                         copy.vendorExtensions.put("x-default-value", defaultValue(p));
                         copy.required = false; // all our query params are optional for our work-around as it's a super-set of a few different routes
@@ -481,7 +481,7 @@ public class ScalaCaskServerCodegen extends AbstractScalaCodegen implements Code
                         copy.defaultValue = defaultValue(copy);
                         return copy;
                     }
-            ).collect(Collectors.toList());
+            ).collect(Collectors.toCollection(LinkedHashSet::new));
 
             return list;
         }
