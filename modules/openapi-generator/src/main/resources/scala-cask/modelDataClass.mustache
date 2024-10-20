@@ -157,6 +157,9 @@ case class {{classname}}Data(
     errors.toSeq
   }
 
+  /**
+   * @return the validated model within a Try (if successful)
+   */
   def validated(failFast : Boolean = false) : scala.util.Try[{{classname}}] = {
     validationErrors(Vector(), failFast) match {
       case Seq() => Success(asModel)
@@ -168,8 +171,7 @@ case class {{classname}}Data(
   def asModel : {{classname}} = {
     {{classname}}(
     {{#vars}}
-        {{#vendorExtensions.x-wrap-in-optional}}{{name}} = Option({{name}}).map(_.asModel){{/vendorExtensions.x-wrap-in-optional}}
-        {{^vendorExtensions.x-wrap-in-optional}}{{name}} = {{name}}.asModel{{/vendorExtensions.x-wrap-in-optional}}{{^-last}},{{/-last}}
+        {{name}} = {{{vendorExtensions.x-asModel}}}{{^-last}},{{/-last}}
     {{/vars}}
     {{#isAdditionalPropertiesTrue}}, additionalProperties{{/isAdditionalPropertiesTrue}}
     )

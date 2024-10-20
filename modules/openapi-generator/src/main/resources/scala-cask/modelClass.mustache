@@ -16,7 +16,7 @@ def asJson: ujson.Value = asData.asJson
 def asData : {{classname}}Data = {
 {{classname}}Data(
 {{#vars}}
-    {{name}} = {{name}}{{#vendorExtensions.x-map-asModel}}.map(_.asData){{/vendorExtensions.x-map-asModel}}{{#vendorExtensions.x-wrap-in-optional}}.getOrElse({{{defaultValue}}}){{/vendorExtensions.x-wrap-in-optional}}{{^-last}},{{/-last}}
+    {{name}} = {{{vendorExtensions.x-asData}}}{{^-last}},{{/-last}}
 {{/vars}}
 {{#isAdditionalPropertiesTrue}}, additionalProperties{{/isAdditionalPropertiesTrue}}
 )

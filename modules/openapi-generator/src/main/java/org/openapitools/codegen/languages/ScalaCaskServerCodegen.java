@@ -43,7 +43,7 @@ public class ScalaCaskServerCodegen extends AbstractScalaCodegen implements Code
     // citizen of cask
     private static final String AdditionalPropertiesType = "Value";
 
-    private final Logger LOGGER = LoggerFactory.getLogger(ScalaCaskServerCodegen.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(ScalaCaskServerCodegen.class);
 
     @Override
     public CodegenType getTag() {
@@ -125,7 +125,7 @@ public class ScalaCaskServerCodegen extends AbstractScalaCodegen implements Code
         // mapped to String as a workaround
         typeMapping.put("binary", "String");
 
-        typeMapping.put("object", "Value");
+        typeMapping.put("object", AdditionalPropertiesType);
 
         cliOptions.add(new CliOption(CodegenConstants.GROUP_ID, CodegenConstants.GROUP_ID_DESC));
         cliOptions.add(new CliOption(CodegenConstants.ARTIFACT_ID, CodegenConstants.ARTIFACT_ID_DESC));
@@ -151,7 +151,7 @@ public class ScalaCaskServerCodegen extends AbstractScalaCodegen implements Code
     public String getSchemaType(Schema p) {
         if (ModelUtils.isFreeFormObject(p, openAPI)) {
             // We're opinionated in this template to use ujson
-            return "Value";
+            return AdditionalPropertiesType;
         }
         return super.getSchemaType(p);
     }
@@ -246,7 +246,6 @@ public class ScalaCaskServerCodegen extends AbstractScalaCodegen implements Code
         importMapping.put("LocalDate", "java.time.LocalDate");
         importMapping.put("OffsetDateTime", "java.time.OffsetDateTime");
         importMapping.put("LocalTime", "java.time.LocalTime");
-        importMapping.put("Value", "ujson.Value");
         importMapping.put(AdditionalPropertiesType, "ujson.Value");
     }
 
@@ -674,23 +673,151 @@ public class ScalaCaskServerCodegen extends AbstractScalaCodegen implements Code
         op.vendorExtensions.put("x-response-type", responses.isEmpty() ? "Unit" : String.join(" | ", responses));
     }
 
-    private static void postProcessProperty(CodegenProperty p) {
+    private static boolean isJsonType(final CodegenProperty p) {
+        var listTypes = Set.of(
+                "List[" + AdditionalPropertiesType + "]",
+                "Seq[" + AdditionalPropertiesType + "]");
+        return AdditionalPropertiesType.equals(p.dataType) || (p.isArray && listTypes.contains(p.dataType));
+    }
+    /**
+     * primitive or enum types don't have Data representations
+     * @param p the property
+     * @return if this property need to have '.asModel' or '.asData' called on it?
+     */
+    private static boolean doesNotNeedMapping(final CodegenProperty p) {
+        // ermph. Apparently 'isPrimitive' can be false while 'isNumeric' is true.
+
+        /*
+         * if dataType == Value then it doesn't need mapping -- this can happen with properties like ths:
+         * {{{
+         *    example:
+         *      items: {}
+         *      type: array
+         * }}}
+         */
+
+        // we can't use !p.isModel, since 'isModel' is false (apparently) for models within arrays
+        return p.isPrimitiveType || p.isEnum || p.isEnumRef || p.isNumeric || isByteArray(p) || isJsonType(p);
+    }
+
+    /**
+     * There's a weird edge-case where fields can be declared like this:
+     *
+     * {{{
+     *   someField:
+     *   format: byte
+     *   type: string
+     * }}
+     */
+    private static boolean isByteArray(final CodegenProperty p) {
+        return "byte".equalsIgnoreCase(p.dataFormat); // &&
+    }
+
+    /**
+     * this parameter is used to create the function:
+     * {{{
+     * class <Thing> {
+     *    ...
+     *    def asData = <Thing>Data(
+     *      someProp = ... <-- how do we turn this property into a model property?
+     *    )
+     * }
+     * }}}
+     *
+     * and then back again
+     */
+    private static String asDataCode(final CodegenProperty p) {
+        final var wrapInOptional = !p.required && !p.isArray && !p.isMap;
+        String code = "";
+
+        String dv = defaultValueNonOption(p, p.defaultValue);
+
+        if (doesNotNeedMapping(p)) {
+            if (wrapInOptional) {
+                code = String.format("%s.getOrElse(%s) /* 1 */ ", p.name, dv);
+            } else {
+                code = String.format("%s /* 2 */ ", p.name);
+            }
+        } else {
+            if (wrapInOptional) {
+                if (isByteArray(p)) {
+                    code = String.format("%s.getOrElse(%s) /* 3.1 */ ", p.name, dv);
+                } else {
+                    code = String.format("%s.map(_.asData).getOrElse(%s) /* 3.2 */ ", p.name, dv);
+                }
+            } else if (p.isArray) {
+                if (isByteArray(p)) {
+                    code = String.format("%s /* 4.1 */ ", p.name);
+                } else {
+                    var needsMapping = isByteArray(p);
+
+                    // we only need to map 'asData' if the collection type is a model
+                    code = String.format("%s.map(_.asData) /* 4.2 */ ", p.name);
+                }
+            } else {
+                code = String.format("%s.asData /* 5 */ ", p.name);
+            }
+        }
+        return code;
+    }
+
+    /**
+     *
+     * {{{
+     * class <Thing>Data {
+     *    ...
+     *    def asModel = <Thing>(
+     *      someProp = ... <-- how do we turn this property into a model property?
+     *    )
+     * }
+     * }}}
+     *
+     * @param p
+     * @return
+     */
+    private static String asModelCode(final CodegenProperty p) {
+        final var wrapInOptional = !p.required && !p.isArray && !p.isMap;
+        String code = "";
+
+        if (doesNotNeedMapping(p)) {
+            if (wrapInOptional) {
+                code = String.format("Option(%s) /* one */ ", p.name);
+            } else {
+                code = String.format("%s /* two */", p.name);
+            }
+        } else {
+            if (wrapInOptional) {
+                if (isByteArray(p)) {
+                    code = String.format("Option(%s) /* three */", p.name);
+                } else {
+                    code = String.format("Option(%s).map(_.asModel) /* four */", p.name);
+                }
+            } else if (p.isArray) {
+                code = String.format("%s.map(_.asModel) /* five */", p.name);
+            } else {
+                code = String.format("%s.asModel /* six */", p.name);
+            }
+        }
+        return code;
+    }
+
+
+    private static void postProcessProperty(final CodegenProperty p) {
         p.vendorExtensions.put("x-datatype-model", asScalaDataType(p, p.required, false));
         p.vendorExtensions.put("x-defaultValue-model", defaultValue(p, p.required, p.defaultValue));
-        String dataTypeData = asScalaDataType(p, p.required, true);
+        final String dataTypeData = asScalaDataType(p, p.required, true);
         p.vendorExtensions.put("x-datatype-data", dataTypeData);
-
-
         p.vendorExtensions.put("x-containertype-data", containerType(dataTypeData));
-
         p.vendorExtensions.put("x-defaultValue-data", defaultValueNonOption(p, p.defaultValue));
+
 
         // the 'asModel' logic for modelData.mustache
         //
         // if it's optional (not required), then wrap the value in Option()
         // ... unless it's a map or array, in which case it can just be empty
         //
-        p.vendorExtensions.put("x-wrap-in-optional", !p.required && !p.isArray && !p.isMap);
+        p.vendorExtensions.put("x-asData", asDataCode(p));
+        p.vendorExtensions.put("x-asModel", asModelCode(p));
 
         // if it's an array or optional, we need to map it as a model -- unless it's a map,
         // in which case we have to map the values
@@ -786,6 +913,21 @@ public class ScalaCaskServerCodegen extends AbstractScalaCodegen implements Code
      * @return true if the property is numeric
      */
     private static boolean isNumeric(IJsonSchemaValidationProperties p) {
+
+
+        /**
+         * This is nice. I've seen an example of a property defined as such:
+         *   round:
+         *     maximum: 4294967295
+         *     minimum: 0
+         *     type: long
+         *
+         * which returns false for isLong and isNumeric, but dataType is set to "Long"
+         */
+        if ("Long".equalsIgnoreCase(p.getDataType())) {
+            return true;
+        }
+
         if (p instanceof CodegenParameter) {
             return ((CodegenParameter)p).isNumeric;
         } else if (p instanceof CodegenProperty) {
@@ -833,8 +975,8 @@ public class ScalaCaskServerCodegen extends AbstractScalaCodegen implements Code
 
         // Customize type for freeform objects
         if (ModelUtils.isFreeFormObject(schema, openAPI)) {
-            property.dataType = "Value";
-            property.baseType = "Value";
+            property.dataType = AdditionalPropertiesType;
+            property.baseType = AdditionalPropertiesType;
         }
 
         return property;
@@ -843,7 +985,7 @@ public class ScalaCaskServerCodegen extends AbstractScalaCodegen implements Code
     @Override
     public String getTypeDeclaration(Schema schema) {
         if (ModelUtils.isFreeFormObject(schema, openAPI)) {
-            return "Value";
+            return AdditionalPropertiesType;
         }
         return super.getTypeDeclaration(schema);
     }
@@ -854,6 +996,8 @@ public class ScalaCaskServerCodegen extends AbstractScalaCodegen implements Code
         if (importMapping.containsKey(name)) {
             result = importMapping.get(name);
         }
+        // we seem to get a weird 'import foo.bar.Array[Byte]' for fields which are declared as strings w/ format 'byte'
+        // this test is to "fix" imports which may be e.g. "import foo.bar.Array[Byte]" by removing them
         if (name.contains("[")) {
             result = null;
         }
