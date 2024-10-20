@@ -269,19 +269,6 @@ public class ScalaCaskServerCodegen extends AbstractScalaCodegen implements Code
         }
     }
 
-
-    static String formatMap(Map<?, ?> map) {
-        StringBuilder mapAsString = new StringBuilder("{");
-        for (Object key : map.keySet().stream().sorted().collect(Collectors.toList())) {
-            mapAsString.append(key + " -- " + map.get(key) + ",\n");
-        }
-        if (mapAsString.length() > 1) {
-            mapAsString.delete(mapAsString.length() - 2, mapAsString.length());
-        }
-        mapAsString.append("}");
-        return mapAsString.toString();
-    }
-
     @Override
     public String toApiName(String name) {
         if (name.isEmpty()) {
@@ -316,8 +303,7 @@ public class ScalaCaskServerCodegen extends AbstractScalaCodegen implements Code
 
     @Override
     public String apiFileFolder() {
-        final String folder = outputFolder + "/jvm/" + sourceFolder + "/" + apiPackage().replace('.', File.separatorChar);
-        return folder;
+        return outputFolder + "/jvm/" + sourceFolder + "/" + apiPackage().replace('.', File.separatorChar);
     }
 
     @Override
@@ -628,6 +614,7 @@ public class ScalaCaskServerCodegen extends AbstractScalaCodegen implements Code
 
     @Override
     public ModelsMap postProcessModels(ModelsMap objs) {
+        super.postProcessModels(objs);
         objs.getModels().stream().map(ModelMap::getModel).forEach(this::postProcessModel);
         return objs;
     }
