@@ -329,6 +329,22 @@ public class ScalaCaskServerCodegen extends AbstractScalaCodegen implements Code
         return outputFolder + "/shared/" + sourceFolder + "/" + apiPackage().replace('.', File.separatorChar);
     }
 
+    static String asMethod(final String input) {
+        // Remove all non-alphanumeric characters using regex
+        String alphanumeric = input.replaceAll("[^a-zA-Z0-9]", "");
+
+        // Ensure the method name doesn't start with a digit
+        if (alphanumeric.isEmpty()) {
+            throw new IllegalArgumentException("Input string does not contain any valid alphanumeric characters");
+        }
+
+        if (Character.isDigit(alphanumeric.charAt(0))) {
+            alphanumeric = "_" + alphanumeric;
+        }
+
+        return alphanumeric;
+    }
+
     static String capitalise(String p) {
         if (p.length() < 2) {
             return p.toUpperCase(Locale.ROOT);
@@ -498,7 +514,7 @@ public class ScalaCaskServerCodegen extends AbstractScalaCodegen implements Code
             List<String> stripped = Arrays.stream(pathPrefix.split("/", -1))
                     .map(ScalaCaskServerCodegen::capitalise).collect(Collectors.toList());
 
-            methodName = "routeWorkAroundFor" + capitalise(httpMethod) + String.join("", stripped);
+            methodName = asMethod("routeWorkAroundFor" + capitalise(httpMethod) + String.join("", stripped));
         }
 
         public void add(CodegenOperation op) {
@@ -552,6 +568,7 @@ public class ScalaCaskServerCodegen extends AbstractScalaCodegen implements Code
             String prefix = nonParamPathPrefix(op);
             String key = op.httpMethod + " " + prefix;
             if (!op.pathParams.isEmpty()) {
+
                 final ScalaCaskServerCodegen.OperationGroup group = groupedByPrefix.getOrDefault(key, new ScalaCaskServerCodegen.OperationGroup(op.httpMethod, prefix));
                 group.add(op);
                 groupedByPrefix.put(key, group);
