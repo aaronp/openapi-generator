@@ -854,6 +854,9 @@ public class ScalaCaskServerCodegen extends AbstractScalaCodegen implements Code
         if (importMapping.containsKey(name)) {
             result = importMapping.get(name);
         }
+        if (name.contains("[")) {
+            result = null;
+        }
         return result;
     }
 
