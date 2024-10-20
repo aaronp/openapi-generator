@@ -168,10 +168,8 @@ case class {{classname}}Data(
   def asModel : {{classname}} = {
     {{classname}}(
     {{#vars}}
-        {{name}} = {{#vendorExtensions.x-wrap-in-optional}}Option({{/vendorExtensions.x-wrap-in-optional}}
-        {{name}}
-        {{#vendorExtensions.x-wrap-in-optional}}){{/vendorExtensions.x-wrap-in-optional}}
-        {{#vendorExtensions.x-map-asModel}}.map(_.asModel){{/vendorExtensions.x-map-asModel}}{{^-last}},{{/-last}}
+        {{#vendorExtensions.x-wrap-in-optional}}{{name}} = Option({{name}}).map(_.asModel){{/vendorExtensions.x-wrap-in-optional}}
+        {{^vendorExtensions.x-wrap-in-optional}}{{name}} = {{name}}.asModel{{/vendorExtensions.x-wrap-in-optional}}{{^-last}},{{/-last}}
     {{/vars}}
     {{#isAdditionalPropertiesTrue}}, additionalProperties{{/isAdditionalPropertiesTrue}}
     )
